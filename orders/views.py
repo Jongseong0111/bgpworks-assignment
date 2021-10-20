@@ -5,8 +5,10 @@ from django.views     import View
 from django.db        import transaction
 
 from orders.models     import Item, Order, OrderDetail
+from decorators       import query_debugger
 
 class ReceiptView(View):
+    @query_debugger
     def post(self, request):
         with transaction.atomic():
             data = json.loads(request.body)
@@ -27,8 +29,8 @@ class ReceiptView(View):
                     Item.objects.create(id = item_id, qty = qty)
                 else:
                     old_item = Item.objects.get(id=item_id)
-                    item.qty += qty
-                    item.save
+                    old_item.qty += qty
+                    old_item.save()
                 OrderDetail.objects.create(item_id = item_id, qty=qty, order=order)
 
             return JsonResponse({'MESSAGE': "SUCCESS"}, status=201)
