@@ -163,7 +163,7 @@ class ReceiptView(View):
         after = now_time - datetime.timedelta(days=5)
         first_balance = OrderDetail.objects.filter(order__time__lte = after).aggregate(balance = Sum('qty'))
         balance = first_balance['balance']
-        print(first_balance)
+
         for i in range(7):
             now_time = after - datetime.timedelta(days=1)
 
