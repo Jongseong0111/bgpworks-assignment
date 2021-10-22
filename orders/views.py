@@ -159,13 +159,20 @@ class ReceiptView(View):
     def get(self, request):
         result = []
         now_time = date.today()
-  
+        
+        after = now_time - datetime.timedelta(days=5)
+        first_balance = OrderDetail.objects.filter(order__time__lte = after).aggregate(balance = Sum('qty'))
+        balance = first_balance['balance']
+        print(first_balance)
         for i in range(7):
-            after = now_time + datetime.timedelta(days=1)
+            now_time = after - datetime.timedelta(days=1)
+
             orders = OrderDetail.objects.annotate(in_q=Sum(Case(When(order__time__range = (now_time, after), order__type = 0,then='qty'), default=0)),\
-                    out_q = Sum(Case(When(order__time__range = (now_time, after), order__type=1,then='qty'), default=0 )),\
-                    balance_q = Sum(Case(When(order__time__lte = after,then='qty'), default=0)))\
-                    .aggregate(in_qty = Sum('in_q'), out_qty = Sum('out_q'), balance = Sum('balance_q'))
-            result.append({'date' : now_time, 'in_qty' : orders['in_qty'], 'out_qty' : orders['out_qty'], 'balance' : orders['balance']})
-            now_time -= datetime.timedelta(days=1)
+                    out_q = Sum(Case(When(order__time__range = (now_time, after), order__type=1,then='qty'), default=0 )))\
+                    .aggregate(in_qty = Sum('in_q'), out_qty = Sum('out_q'))
+            balance += orders['in_qty']+orders['out_qty']
+            
+            result.append({'date' : now_time, 'in_qty' : orders['in_qty'], 'out_qty' : orders['out_qty'], 'balance' : balance})
+            after += datetime.timedelta(days=1)
+        
         return JsonResponse({'RESULT': result}, status=200)
