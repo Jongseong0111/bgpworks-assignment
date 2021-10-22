@@ -1,8 +1,12 @@
 import json
+import datetime
+from datetime import date
 
 from django.http      import JsonResponse
 from django.views     import View
 from django.db        import transaction
+from django.db.models import F, Sum, Count, Case, When, Value
+from django.db.models.functions import Coalesce
 
 from orders.models     import Item, Order, OrderDetail
 from decorators       import query_debugger
@@ -36,7 +40,7 @@ class ReceiptView(View):
             ids_list = [item['item_id'] for item in items]
 
             ids = Item.objects.filter(item_id__in = ids_list)
-            old_ids = [item.item_id for item in ids]
+            old_ids = [item.item_id for item in ids] # 캐싱
             old_qty = []
 
             # 존재하는 id는 update, 존재하지 않는 id는 create 배열에 나눠담기
@@ -85,7 +89,7 @@ class ReceiptView(View):
 
             remove_items = []
             # 원복하기 위해 item 불러와서 수정
-            old_items = Item.objects.filter(item_id__in = ids) # 
+            old_items = Item.objects.filter(item_id__in = ids) 
             for i in range(len(old_items)):
                 old_items[i].qty -= qtys[i] # 기존 order detail의 수량만큼 감소
             
@@ -144,9 +148,6 @@ class ReceiptView(View):
                 
             Item.objects.bulk_update(ids, ['qty'])
 
-
-
-            ###
             result = []
             stocks = Item.objects.exclude(qty=0).order_by('item_id')
             for stock in stocks:
@@ -154,3 +155,24 @@ class ReceiptView(View):
 
             return JsonResponse({'RESULT': result}, status=200)
             
+    @query_debugger
+    def get(self, request):
+        result = []
+        now_time = date.today()
+        
+        after = now_time - datetime.timedelta(days=5)
+        first_balance = OrderDetail.objects.filter(order__time__lte = after).aggregate(balance = Sum('qty'))
+        balance = first_balance['balance']
+
+        for i in range(7):
+            now_time = after - datetime.timedelta(days=1)
+
+            orders = OrderDetail.objects.annotate(in_q=Sum(Case(When(order__time__range = (now_time, after), order__type = 0,then='qty'), default=0)),\
+                    out_q = Sum(Case(When(order__time__range = (now_time, after), order__type=1,then='qty'), default=0 )))\
+                    .aggregate(in_qty = Sum('in_q'), out_qty = Sum('out_q'))
+            balance += orders['in_qty']+orders['out_qty']
+            
+            result.append({'date' : now_time, 'in_qty' : orders['in_qty'], 'out_qty' : orders['out_qty'], 'balance' : balance})
+            after += datetime.timedelta(days=1)
+        
+        return JsonResponse({'RESULT': result}, status=200)
